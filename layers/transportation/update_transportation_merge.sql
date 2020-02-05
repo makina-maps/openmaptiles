@@ -141,12 +141,12 @@ CREATE OR REPLACE FUNCTION transportation.refresh() RETURNS trigger AS
 $$
 BEGIN
     RAISE NOTICE 'Refresh transportation';
-    REFRESH MATERIALIZED VIEW osm_transportation_merge_linestring;
-    REFRESH MATERIALIZED VIEW osm_transportation_merge_linestring_gen3;
-    REFRESH MATERIALIZED VIEW osm_transportation_merge_linestring_gen4;
-    REFRESH MATERIALIZED VIEW osm_transportation_merge_linestring_gen5;
-    REFRESH MATERIALIZED VIEW osm_transportation_merge_linestring_gen6;
-    REFRESH MATERIALIZED VIEW osm_transportation_merge_linestring_gen7;
+    -- REFRESH MATERIALIZED VIEW osm_transportation_merge_linestring;
+    -- REFRESH MATERIALIZED VIEW osm_transportation_merge_linestring_gen3;
+    -- REFRESH MATERIALIZED VIEW osm_transportation_merge_linestring_gen4;
+    -- REFRESH MATERIALIZED VIEW osm_transportation_merge_linestring_gen5;
+    -- REFRESH MATERIALIZED VIEW osm_transportation_merge_linestring_gen6;
+    -- REFRESH MATERIALIZED VIEW osm_transportation_merge_linestring_gen7;
     -- noinspection SqlWithoutWhere
     DELETE FROM transportation.updates;
     RETURN NULL;

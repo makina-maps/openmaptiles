@@ -89,8 +89,8 @@ DECLARE
 BEGIN
     RAISE LOG 'Refresh poi_point';
     PERFORM update_osm_poi_point();
-    REFRESH MATERIALIZED VIEW osm_poi_stop_centroid;
-    REFRESH MATERIALIZED VIEW osm_poi_stop_rank;
+    REFRESH MATERIALIZED VIEW CONCURRENTLY osm_poi_stop_centroid;
+    REFRESH MATERIALIZED VIEW CONCURRENTLY osm_poi_stop_rank;
     PERFORM update_osm_poi_point_agg();
     -- noinspection SqlWithoutWhere
     DELETE FROM poi_point.updates;

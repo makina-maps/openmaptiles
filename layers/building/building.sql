@@ -221,6 +221,8 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION building_polygon.refresh() RETURNS trigger AS
 $$
+DECLARE
+    t TIMESTAMP WITH TIME ZONE := clock_timestamp();
 BEGIN
     RAISE LOG 'Refresh osm_all_buildings_mat';
 
@@ -351,6 +353,8 @@ BEGIN
     DROP TABLE old_new_buildings CASCADE;
     DROP TABLE impacted_clusters CASCADE;
     DROP TABLE old_buildings CASCADE;
+
+    RAISE LOG 'Refresh osm_all_buildings_mat done in %', age(clock_timestamp(), t);
     RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;

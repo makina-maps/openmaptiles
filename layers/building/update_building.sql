@@ -89,52 +89,52 @@ $$ LANGUAGE plpgsql STABLE
                     PARALLEL SAFE;
 
 
-DROP MATERIALIZED VIEW IF EXISTS osm_building_block_gen1_dup CASCADE;
+-- DROP MATERIALIZED VIEW IF EXISTS osm_building_block_gen1_dup CASCADE;
 
-CREATE MATERIALIZED VIEW osm_building_block_gen1_dup AS
-SELECT *
-FROM osm_building_block_gen1();
+-- CREATE MATERIALIZED VIEW osm_building_block_gen1_dup AS
+-- SELECT *
+-- FROM osm_building_block_gen1();
 
-CREATE INDEX ON osm_building_block_gen1_dup USING gist (geometry);
+-- CREATE INDEX ON osm_building_block_gen1_dup USING gist (geometry);
 
--- etldoc: osm_building_polygon -> osm_building_block_gen_z13
-DROP MATERIALIZED VIEW IF EXISTS osm_building_block_gen_z13;
-CREATE MATERIALIZED VIEW osm_building_block_gen_z13 AS
-(
-WITH 
-    counts AS (
-        SELECT count(osm_id) AS counts,
-		        osm_id
-	    FROM osm_building_block_gen1_dup
-	GROUP BY osm_id
-    ),
+-- -- etldoc: osm_building_polygon -> osm_building_block_gen_z13
+-- DROP MATERIALIZED VIEW IF EXISTS osm_building_block_gen_z13;
+-- CREATE MATERIALIZED VIEW osm_building_block_gen_z13 AS
+-- (
+-- WITH 
+--     counts AS (
+--         SELECT count(osm_id) AS counts,
+-- 		        osm_id
+-- 	    FROM osm_building_block_gen1_dup
+-- 	GROUP BY osm_id
+--     ),
 
-    duplicates AS (
-        SELECT counts.osm_id
-	    FROM counts
-	    WHERE counts.counts > 1
-    )
+--     duplicates AS (
+--         SELECT counts.osm_id
+-- 	    FROM counts
+-- 	    WHERE counts.counts > 1
+--     )
 
-SELECT osm.osm_id,
-		ST_Union(
-            ST_MakeValid(osm.geometry)) AS geometry
-	FROM osm_building_block_gen1_dup osm,
-			duplicates
-	WHERE osm.osm_id = duplicates.osm_id
-	GROUP BY osm.osm_id
+-- SELECT osm.osm_id,
+-- 		ST_Union(
+--             ST_MakeValid(osm.geometry)) AS geometry
+-- 	FROM osm_building_block_gen1_dup osm,
+-- 			duplicates
+-- 	WHERE osm.osm_id = duplicates.osm_id
+-- 	GROUP BY osm.osm_id
 	
-	UNION ALL
+-- 	UNION ALL
 
-	SELECT osm.osm_id, 
-			osm.geometry 
-	FROM osm_building_block_gen1_dup osm, 
-            counts 
-	WHERE counts.counts = 1 
-		AND osm.osm_id = counts.osm_id
-);
+-- 	SELECT osm.osm_id, 
+-- 			osm.geometry 
+-- 	FROM osm_building_block_gen1_dup osm, 
+--             counts 
+-- 	WHERE counts.counts = 1 
+-- 		AND osm.osm_id = counts.osm_id
+-- );
 
-CREATE INDEX ON osm_building_block_gen_z13 USING gist (geometry);
-CREATE UNIQUE INDEX ON osm_building_block_gen_z13 USING btree (osm_id);
+-- CREATE INDEX ON osm_building_block_gen_z13 USING gist (geometry);
+-- CREATE UNIQUE INDEX ON osm_building_block_gen_z13 USING btree (osm_id);
 
 -- Handle updates
 
@@ -171,15 +171,15 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trigger_flag
-    AFTER INSERT OR UPDATE OR DELETE
-    ON osm_building_polygon
-    FOR EACH STATEMENT
-EXECUTE PROCEDURE buildings.flag();
+-- CREATE TRIGGER trigger_flag
+--     AFTER INSERT OR UPDATE OR DELETE
+--     ON osm_building_polygon
+--     FOR EACH STATEMENT
+-- EXECUTE PROCEDURE buildings.flag();
 
-CREATE CONSTRAINT TRIGGER trigger_refresh
-    AFTER INSERT
-    ON buildings.updates
-    INITIALLY DEFERRED
-    FOR EACH ROW
-EXECUTE PROCEDURE buildings.refresh();
+-- CREATE CONSTRAINT TRIGGER trigger_refresh
+--     AFTER INSERT
+--     ON buildings.updates
+--     INITIALLY DEFERRED
+--     FOR EACH ROW
+-- EXECUTE PROCEDURE buildings.refresh();

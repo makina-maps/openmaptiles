@@ -59,8 +59,8 @@ FROM osm_buildings_standalone
 DROP TABLE IF EXISTS osm_all_buildings_mat CASCADE;
 CREATE TABLE osm_all_buildings_mat AS (
     SELECT
-        --max(osm_id) AS osm_id,
-        ST_Collect(geometry) AS geometry,
+        array_agg(osm_id ORDER BY osm_id)    AS osm_ids,
+        ST_Collect(geometry ORDER BY osm_id) AS geometry,
         height,
         min_height,
         levels,
@@ -140,8 +140,8 @@ FROM (
                                   material,
                                   colour,
                                   hide_3d
-         FROM (SELECT NULL::bigint             AS osm_id,
-                      (ST_Dump(geometry)).geom AS geometry,
+         FROM (SELECT unnest(osm_ids) AS osm_id,
+                      (ST_Dump(geometry)).geom AS geometry, -- Set Returning Functions are dumped in parallel
                       height,
                       min_height,
                       levels,
@@ -240,7 +240,8 @@ BEGIN
 
     -- Seach for clusters of changed buildings
     CREATE TEMP TABLE impacted_clusters AS
-    SELECT osm_all_buildings_mat.geometry,
+    SELECT osm_ids,
+           osm_all_buildings_mat.geometry,
            height,
            min_height,
            levels,
@@ -281,7 +282,8 @@ BEGIN
 
     -- Unpack impacted clusters
     CREATE TEMP VIEW unclustered_buildings AS
-    SELECT (ST_Dump(geometry)).geom AS geometry,
+    SELECT unnest(osm_ids) AS osm_id,
+           (ST_Dump(geometry)).geom AS geometry, -- Set Returning Functions are dumped in parallel
            height,
            min_height,
            levels,
@@ -293,7 +295,8 @@ BEGIN
 
     -- Discart old buildings from clusters
     CREATE TEMP VIEW untouched_buildings AS
-    SELECT unclustered_buildings.geometry,
+    SELECT osm_id,
+           unclustered_buildings.geometry,
            height,
            min_height,
            levels,
@@ -312,7 +315,8 @@ BEGIN
     SELECT *
     FROM untouched_buildings
     UNION
-    SELECT geometry,
+    SELECT osm_id,
+           geometry,
            height,
            min_height,
            levels,
@@ -324,7 +328,8 @@ BEGIN
 
     -- Build and save new clusters
     INSERT INTO osm_all_buildings_mat
-    SELECT ST_Collect(geometry) AS geometry,
+    SELECT array_agg(osm_id ORDER BY osm_id) AS osm_ids,
+           ST_Collect(geometry ORDER BY osm_id) AS geometry,
            height,
            min_height,
            levels,

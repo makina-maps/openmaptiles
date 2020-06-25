@@ -234,8 +234,8 @@ BEGIN
 
     -- Flatten old and new version of building
     CREATE TEMP VIEW touched_buildings AS
-    SELECT DISTINCT(geometry) geometry
-    FROM (SELECT unnest(ARRAY [old_geometry, new_geometry]) AS geometry FROM old_new_buildings) AS t
+    SELECT DISTINCT(osm_id) osm_id, geometry
+    FROM (SELECT osm_id, unnest(ARRAY [old_geometry, new_geometry]) AS geometry FROM old_new_buildings) AS t
     WHERE geometry IS NOT NULL;
 
     -- Seach for clusters of changed buildings
@@ -251,34 +251,33 @@ BEGIN
            hide_3d
     FROM osm_all_buildings_mat
              JOIN touched_buildings ON
-        touched_buildings.geometry && osm_all_buildings_mat.geometry;
+        touched_buildings.geometry && osm_all_buildings_mat.geometry AND
+        touched_buildings.osm_id = ANY(osm_all_buildings_mat.osm_ids);
 
     -- Remove old version of impacted clusters
     DELETE
     FROM osm_all_buildings_mat
         USING impacted_clusters
-    WHERE osm_all_buildings_mat.geometry && impacted_clusters.geometry
-      AND osm_all_buildings_mat.geometry = impacted_clusters.geometry;
+    WHERE osm_all_buildings_mat.geometry && impacted_clusters.geometry AND
+          impacted_clusters.osm_ids && osm_all_buildings_mat.osm_ids;
 
     CREATE TEMP TABLE old_buildings AS
-    SELECT old_geometry AS geometry FROM old_new_buildings WHERE old_geometry IS NOT NULL;
-    CREATE INDEX old_buildings_geom ON old_buildings USING gist (geometry);
+    SELECT osm_id FROM old_new_buildings WHERE old_geometry IS NOT NULL;
+    CREATE INDEX old_buildings_osm_id_idx ON old_buildings(osm_id);
     CREATE TEMP VIEW new_buildings AS
-    SELECT new_geometry AS geometry FROM old_new_buildings WHERE new_geometry IS NOT NULL;
+    SELECT osm_id FROM old_new_buildings WHERE new_geometry IS NOT NULL;
 
     -- Get new version of buildings with full attributes
     CREATE TEMP VIEW new_buildings_full AS
     SELECT osm_buildings.*
     FROM new_buildings
              JOIN osm_buildings_relation AS osm_buildings ON
-            osm_buildings.geometry && new_buildings.geometry AND
-            osm_buildings.geometry = new_buildings.geometry
+            osm_buildings.osm_id = new_buildings.osm_id
     UNION ALL
     SELECT osm_buildings.*
     FROM new_buildings
              JOIN osm_buildings_standalone AS osm_buildings ON
-            osm_buildings.geometry && new_buildings.geometry AND
-            osm_buildings.geometry = new_buildings.geometry;
+            osm_buildings.osm_id = new_buildings.osm_id;
 
     -- Unpack impacted clusters
     CREATE TEMP VIEW unclustered_buildings AS
@@ -295,7 +294,7 @@ BEGIN
 
     -- Discart old buildings from clusters
     CREATE TEMP VIEW untouched_buildings AS
-    SELECT osm_id,
+    SELECT unclustered_buildings.osm_id,
            unclustered_buildings.geometry,
            height,
            min_height,
@@ -306,9 +305,8 @@ BEGIN
            hide_3d
     FROM unclustered_buildings
              LEFT JOIN old_buildings ON
-            old_buildings.geometry && unclustered_buildings.geometry AND
-            old_buildings.geometry = unclustered_buildings.geometry
-    WHERE old_buildings.geometry IS NULL;
+            old_buildings.osm_id = unclustered_buildings.osm_id
+    WHERE old_buildings.osm_id IS NULL;
 
     -- Reassemble previous untouched buildings and new buildings
     CREATE TEMP VIEW current_buildings AS

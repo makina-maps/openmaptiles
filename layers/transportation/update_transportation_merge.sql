@@ -1,3 +1,4 @@
+DROP TRIGGER IF EXISTS trigger_store_transportation_highway_linestring ON osm_highway_linestring;
 DROP TRIGGER IF EXISTS trigger_flag_transportation ON osm_highway_linestring;
 DROP TRIGGER IF EXISTS trigger_refresh ON transportation.updates;
 
@@ -7,15 +8,22 @@ DROP TRIGGER IF EXISTS trigger_refresh ON transportation.updates;
 -- Because this works well for roads that do not have relations as well
 
 
--- Improve performance of the sql in transportation_name/network_type.sql
+-- Improve performance of the sql in transportation_name/update_route_member.sql
 CREATE INDEX IF NOT EXISTS osm_highway_linestring_highway_partial_idx
     ON osm_highway_linestring (highway)
-    WHERE highway IN ('motorway', 'trunk', 'primary', 'construction');
+    WHERE highway IN ('motorway', 'trunk');
+
+-- Index to speed up diff update
+CREATE INDEX IF NOT EXISTS osm_highway_linestring_geom_partial_idx
+    ON osm_highway_linestring
+    USING gist(geometry)
+    WHERE (highway IN ('motorway', 'trunk', 'primary') OR
+          highway = 'construction' AND construction IN ('motorway', 'trunk', 'primary'))
+      AND ST_IsValid(geometry);
 
 -- etldoc: osm_highway_linestring ->  osm_transportation_merge_linestring
-DROP MATERIALIZED VIEW IF EXISTS osm_transportation_merge_linestring CASCADE;
-CREATE MATERIALIZED VIEW osm_transportation_merge_linestring AS
-(
+DROP TABLE IF EXISTS osm_transportation_merge_linestring;
+CREATE TABLE osm_transportation_merge_linestring AS
 SELECT (ST_Dump(geometry)).geom AS geometry,
        NULL::bigint AS osm_id,
        highway,
@@ -37,8 +45,7 @@ FROM (
                 highway = 'construction' AND construction IN ('motorway', 'trunk', 'primary'))
            AND ST_IsValid(geometry)
          GROUP BY highway, construction, is_bridge, is_tunnel, is_ford
-     ) AS highway_union
-    ) /* DELAY_MATERIALIZED_VIEW_CREATION */;
+     ) AS highway_union;
 CREATE INDEX IF NOT EXISTS osm_transportation_merge_linestring_geometry_idx
     ON osm_transportation_merge_linestring USING gist (geometry);
 
@@ -143,6 +150,35 @@ CREATE INDEX IF NOT EXISTS osm_transportation_merge_linestring_gen_z4_geometry_i
 
 CREATE SCHEMA IF NOT EXISTS transportation;
 
+CREATE TABLE IF NOT EXISTS transportation.changes
+(
+    id serial PRIMARY KEY,
+    osm_id bigint,
+    is_old boolean,
+    geometry geometry,
+    highway varchar,
+    construction varchar,
+    is_bridge boolean,
+    is_tunnel boolean,
+    is_ford boolean,
+    z_order integer
+);
+
+CREATE OR REPLACE FUNCTION transportation.store() RETURNS trigger AS
+$$
+BEGIN
+    IF (tg_op = 'DELETE' OR tg_op = 'UPDATE') THEN
+        INSERT INTO transportation.changes(osm_id, is_old, geometry, highway, construction, is_bridge, is_tunnel, is_ford, z_order)
+        VALUES (old.osm_id, true, old.geometry, old.highway, old.construction, old.is_bridge, old.is_tunnel, old.is_ford, old.z_order);
+    END IF;
+    IF (tg_op = 'UPDATE' OR tg_op = 'INSERT') THEN
+        INSERT INTO transportation.changes(osm_id, is_old, geometry, highway, construction, is_bridge, is_tunnel, is_ford, z_order)
+        VALUES (new.osm_id, false, new.geometry, new.highway, new.construction, new.is_bridge, new.is_tunnel, new.is_ford, new.z_order);
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE TABLE IF NOT EXISTS transportation.updates
 (
     id serial PRIMARY KEY,
@@ -163,12 +199,128 @@ DECLARE
     t TIMESTAMP WITH TIME ZONE := clock_timestamp();
 BEGIN
     RAISE LOG 'Refresh transportation';
-    REFRESH MATERIALIZED VIEW osm_transportation_merge_linestring;
+
+    -- Compact the change history to keep only the first and last version
+    CREATE TEMP TABLE changes_compact AS
+    SELECT
+        osm_id,
+        is_old,
+        geometry,
+        highway,
+        construction,
+        is_bridge,
+        is_tunnel,
+        is_ford,
+        z_order
+    FROM ((
+              SELECT DISTINCT ON (osm_id) *
+              FROM transportation.changes
+              WHERE is_old
+              ORDER BY osm_id,
+                       id ASC
+          )
+          UNION ALL
+          (
+              SELECT DISTINCT ON (osm_id) *
+              FROM transportation.changes
+              WHERE NOT is_old
+              ORDER BY osm_id,
+                       id DESC
+          )) AS t;
+
+    -- Collect all original existing ways from impacted mmerge
+    CREATE TEMP TABLE osm_highway_linestring_original AS
+    SELECT DISTINCT ON (geometry, highway, construction, is_bridge, is_tunnel, is_ford)
+        h.geometry,
+        h.highway,
+        h.construction,
+        h.is_bridge,
+        h.is_tunnel,
+        h.is_ford,
+        h.z_order
+    FROM
+        osm_transportation_merge_linestring AS t
+        JOIN changes_compact AS c ON
+            t.geometry && c.geometry
+            AND t.highway IS NOT DISTINCT FROM c.highway
+            AND t.construction IS NOT DISTINCT FROM c.construction
+            AND t.is_bridge IS NOT DISTINCT FROM c.is_bridge
+            AND t.is_tunnel IS NOT DISTINCT FROM c.is_tunnel
+            AND t.is_ford IS NOT DISTINCT FROM c.is_ford
+        JOIN osm_highway_linestring AS h ON
+            NOT h.osm_id IN (SELECT osm_id FROM changes_compact)
+            AND t.geometry && c.geometry
+            AND ST_Contains(t.geometry, h.geometry)
+            AND t.highway IS NOT DISTINCT FROM c.highway
+            AND t.construction IS NOT DISTINCT FROM c.construction
+            AND t.is_bridge IS NOT DISTINCT FROM c.is_bridge
+            AND t.is_tunnel IS NOT DISTINCT FROM c.is_tunnel
+            AND t.is_ford IS NOT DISTINCT FROM c.is_ford
+    WHERE (h.highway IN ('motorway', 'trunk', 'primary') OR
+            h.highway = 'construction' AND h.construction IN ('motorway', 'trunk', 'primary'))
+        AND ST_IsValid(h.geometry);
+
+    DELETE
+    FROM osm_transportation_merge_linestring AS t
+        USING changes_compact AS c
+    WHERE
+        t.geometry && c.geometry
+        AND t.highway IS NOT DISTINCT FROM c.highway
+        AND t.construction IS NOT DISTINCT FROM c.construction
+        AND t.is_bridge IS NOT DISTINCT FROM c.is_bridge
+        AND t.is_tunnel IS NOT DISTINCT FROM c.is_tunnel
+        AND t.is_ford IS NOT DISTINCT FROM c.is_ford;
+
+    INSERT INTO osm_transportation_merge_linestring
+    SELECT (ST_Dump(geometry)).geom AS geometry,
+        NULL::bigint AS osm_id,
+        highway,
+        construction,
+        is_bridge,
+        is_tunnel,
+        is_ford,
+        z_order
+    FROM (
+        SELECT ST_LineMerge(ST_Collect(geometry)) AS geometry,
+                highway,
+                construction,
+                is_bridge,
+                is_tunnel,
+                is_ford,
+                min(z_order) AS z_order
+        FROM ((
+            SELECT * FROM osm_highway_linestring_original
+        ) UNION ALL (
+            -- New or updated ways
+            SELECT
+                geometry,
+                highway,
+                construction,
+                is_bridge,
+                is_tunnel,
+                is_ford,
+                z_order
+            FROM
+                changes_compact
+            WHERE
+                NOT is_old
+                AND (highway IN ('motorway', 'trunk', 'primary') OR
+                      highway = 'construction' AND construction IN ('motorway', 'trunk', 'primary'))
+                AND ST_IsValid(geometry)
+        )) AS t
+        GROUP BY highway, construction, is_bridge, is_tunnel, is_ford
+    ) AS highway_union;
+
     REFRESH MATERIALIZED VIEW osm_transportation_merge_linestring_gen_z8;
     REFRESH MATERIALIZED VIEW osm_transportation_merge_linestring_gen_z7;
     REFRESH MATERIALIZED VIEW osm_transportation_merge_linestring_gen_z6;
     REFRESH MATERIALIZED VIEW osm_transportation_merge_linestring_gen_z5;
     REFRESH MATERIALIZED VIEW osm_transportation_merge_linestring_gen_z4;
+
+    DROP TABLE osm_highway_linestring_original;
+    DROP TABLE changes_compact;
+    -- noinspection SqlWithoutWhere
+    DELETE FROM transportation.changes;
     -- noinspection SqlWithoutWhere
     DELETE FROM transportation.updates;
 
@@ -176,6 +328,12 @@ BEGIN
     RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_store_transportation_highway_linestring
+    AFTER INSERT OR UPDATE OR DELETE
+    ON osm_highway_linestring
+    FOR EACH ROW
+EXECUTE PROCEDURE transportation.store();
 
 CREATE TRIGGER trigger_flag_transportation
     AFTER INSERT OR UPDATE OR DELETE

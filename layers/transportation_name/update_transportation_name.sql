@@ -338,7 +338,7 @@ CREATE TRIGGER trigger_store_transportation_route_member
     FOR EACH ROW
 EXECUTE PROCEDURE transportation_name.route_member_store();
 
-CREATE TRIGGER trigger_store_transportation_highway_linestring
+CREATE TRIGGER trigger_store_transportation_name_highway_linestring
     AFTER INSERT OR UPDATE OR DELETE
     ON osm_highway_linestring
     FOR EACH ROW

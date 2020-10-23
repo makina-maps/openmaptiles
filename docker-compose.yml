@@ -18,8 +18,6 @@ services:
       - pgdata:/var/lib/postgresql/data
     networks:
       - postgres
-    ports:
-      - "5432"
     env_file: .env-postgres
 
   import-data:
@@ -101,6 +99,6 @@ services:
     networks:
       - postgres
     ports:
-      - "${PPORT:-8090}:${PPORT:-8090}"
+      - "127.0.0.1:${PPORT:-8090}:${PPORT:-8090}"
     volumes:
       - .:/tileset

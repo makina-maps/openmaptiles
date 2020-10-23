@@ -3,6 +3,7 @@ version: "2.3"
 
 volumes:
   pgdata:
+  imposm_cache:
 
 networks:
   postgres:
@@ -55,7 +56,7 @@ services:
       - ./data:/export
       - ./build/sql:/sql
       - ./build:/mapping
-      - ./cache:/cache
+      - imposm_cache:/cache
 
   generate-changed-vectortiles:
     image: "openmaptiles/generate-vectortiles:${TOOLS_VERSION}"

@@ -28,7 +28,8 @@ services:
       - postgres
 
   openmaptiles-tools:
-    image: "openmaptiles/openmaptiles-tools:${TOOLS_VERSION}"
+    build:
+      context: openmaptiles-tools
     env_file: .env
     environment:
       # Must match the version of this file (first line)

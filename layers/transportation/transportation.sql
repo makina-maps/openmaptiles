@@ -65,7 +65,7 @@ SELECT osm_id,
        NULLIF(surface, '') AS surface
 FROM (
          -- etldoc: osm_transportation_merge_linestring_gen_z4 -> layer_transportation:z4
-         SELECT osm_id,
+         SELECT NULL::bigint AS osm_id,
                 geometry,
                 highway,
                 construction,
@@ -94,7 +94,7 @@ FROM (
          UNION ALL
 
          -- etldoc: osm_transportation_merge_linestring_gen_z5 -> layer_transportation:z5
-         SELECT osm_id,
+         SELECT NULL AS osm_id,
                 geometry,
                 highway,
                 construction,
@@ -123,7 +123,7 @@ FROM (
          UNION ALL
 
          -- etldoc: osm_transportation_merge_linestring_gen_z6 -> layer_transportation:z6
-         SELECT osm_id,
+         SELECT NULL AS osm_id,
                 geometry,
                 highway,
                 construction,
@@ -152,7 +152,7 @@ FROM (
          UNION ALL
 
          -- etldoc: osm_transportation_merge_linestring_gen_z7  ->  layer_transportation:z7
-         SELECT osm_id,
+         SELECT NULL AS osm_id,
                 geometry,
                 highway,
                 construction,
@@ -181,7 +181,7 @@ FROM (
          UNION ALL
 
          -- etldoc: osm_transportation_merge_linestring_gen_z8  ->  layer_transportation:z8
-         SELECT osm_id,
+         SELECT NULL AS osm_id,
                 geometry,
                 highway,
                 construction,
@@ -210,7 +210,7 @@ FROM (
          UNION ALL
 
          -- etldoc: osm_highway_linestring_gen_z9  ->  layer_transportation:z9
-         SELECT osm_id,
+         SELECT NULL AS osm_id,
                 geometry,
                 highway,
                 construction,
@@ -240,7 +240,7 @@ FROM (
          UNION ALL
 
          -- etldoc: osm_highway_linestring_gen_z10  ->  layer_transportation:z10
-         SELECT osm_id,
+         SELECT NULL AS osm_id,
                 geometry,
                 highway,
                 construction,
@@ -270,7 +270,7 @@ FROM (
          UNION ALL
 
          -- etldoc: osm_highway_linestring_gen_z11  ->  layer_transportation:z11
-         SELECT osm_id,
+         SELECT NULL AS osm_id,
                 geometry,
                 highway,
                 construction,
